@@ -2,6 +2,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
+use extract_frontmatter::Extractor;
 use handlebars::Handlebars;
 use log::{error, info};
 use maplit::{btreemap, hashmap};
@@ -12,6 +13,11 @@ use tokio::process::Command;
 
 fn default_address() -> String {
     "http://localhost:1181".to_string()
+}
+
+#[derive(Debug, Deserialize)]
+struct PageMetadata {
+    title: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +175,7 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
     };
 
     let mut file = NamedTempFile::new()?;
-    let source = "Title: {{#if title}}{{title}}{{/if}}\n\n{{#if body}}{{body}}{{/if}}";
+    let source = "---\ntitle: {{#if title}}{{title}}{{/if}}\n---\n{{#if body}}{{body}}{{/if}}";
     let mut handlebars = Handlebars::new();
 
     handlebars.register_template_string("t1", source)?;
@@ -188,6 +194,8 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
         .wait()
         .await?;
 
+    // TODO(jsvana): make all errors after editor dump the file
+    // and log to user
     if !exit_status.success() {
         let (_, path) = file.keep()?;
         info!(
@@ -203,46 +211,18 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
     file.seek(SeekFrom::Start(0))?;
     file.read_to_string(&mut contents)?;
 
-    let mut lines = contents.lines();
-    let title = match lines.next() {
-        Some(line) => line,
-        None => {
-            let (_, path) = file.keep()?;
-            info!(
-                "Page missing title line. Refusing to continue. \
-            Edited content is accessible at \"{}\".",
-                path.display()
-            );
+    let mut extractor = Extractor::new(&contents);
+    extractor.select_by_terminator("---");
 
-            return Ok(());
-        }
-    };
-
-    let title = match title.strip_prefix("Title: ") {
-        Some(title) => title,
-        None => {
-            let (_, path) = file.keep()?;
-            info!(
-                "Page title is malformed. Must start with \"Title: \". Refusing to continue. \
-                Edited content is accessible at \"{}\".",
-                path.display()
-            );
-
-            return Ok(());
-        }
-    };
-
-    let mut rest = Vec::new();
-    for line in lines {
-        rest.push(line);
-    }
-    let body = rest.join("\n");
+    let (front_matter, body) = extractor.split();
+    let front_matter = front_matter.join("\n");
+    let metadata: PageMetadata = serde_yaml::from_str(&front_matter)?;
 
     let request = SetPageRequest {
         token,
         slug,
-        title: title.to_string(),
-        body,
+        title: metadata.title,
+        body: body.to_string(),
         previous_version,
     };
 
