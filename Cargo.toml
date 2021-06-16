@@ -19,4 +19,5 @@ structopt = "0.3"
 tempfile = "3.2"
 tokio = { version = "1", features = ["full"] }
 toml = "0.5"
+uwiki-types = "0.1"
 xdg = "2.0"

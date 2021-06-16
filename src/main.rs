@@ -6,7 +6,7 @@ use extract_frontmatter::Extractor;
 use handlebars::Handlebars;
 use log::{error, info};
 use maplit::{btreemap, hashmap};
-use serde_derive::{Deserialize, Serialize};
+use serde_derive::Deserialize;
 use structopt::StructOpt;
 use tempfile::NamedTempFile;
 use tokio::process::Command;
@@ -49,51 +49,13 @@ struct Args {
     subcommand: Subcommand,
 }
 
-#[derive(Debug, Deserialize)]
-struct AddUserResponse {
-    success: bool,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AuthenticateResponse {
-    success: bool,
-    message: String,
-    token: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GetPageResponse {
-    success: bool,
-    message: String,
-    body: Option<String>,
-    title: Option<String>,
-    version: Option<i32>,
-}
-
-#[derive(Debug, Serialize)]
-struct SetPageRequest {
-    token: String,
-    slug: String,
-    title: String,
-    body: String,
-    previous_version: i32,
-}
-
-#[derive(Debug, Deserialize)]
-struct SetPageResponse {
-    success: bool,
-    message: String,
-    new_version: Option<i32>,
-}
-
 async fn cmd_add_user(username: String, password: String, config: Config) -> Result<()> {
     let map = hashmap! {
         "username" => username,
         "password" => password,
     };
 
-    let response: AddUserResponse = reqwest::Client::new()
+    let response: uwiki_types::AddUserResponse = reqwest::Client::new()
         .post(format!("{}/u", config.server_address))
         .json(&map)
         .send()
@@ -122,7 +84,7 @@ async fn cmd_auth(config: Config) -> Result<()> {
             .ok_or_else(|| anyhow!("config is missing password"))?,
     };
 
-    let response: AuthenticateResponse = reqwest::Client::new()
+    let response: uwiki_types::AuthenticateResponse = reqwest::Client::new()
         .post(format!("{}/a", config.server_address))
         .json(&map)
         .send()
@@ -153,7 +115,7 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
         "slug" => slug.clone(),
     };
 
-    let response: GetPageResponse = reqwest::Client::new()
+    let response: uwiki_types::GetPageResponse = reqwest::Client::new()
         .post(format!("{}/g", config.server_address))
         .json(&map)
         .send()
@@ -218,7 +180,7 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
     let front_matter = front_matter.join("\n");
     let metadata: PageMetadata = serde_yaml::from_str(&front_matter)?;
 
-    let request = SetPageRequest {
+    let request = uwiki_types::SetPageRequest {
         token,
         slug,
         title: metadata.title,
@@ -226,7 +188,7 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
         previous_version,
     };
 
-    let response: SetPageResponse = reqwest::Client::new()
+    let response: uwiki_types::SetPageResponse = reqwest::Client::new()
         .post(format!("{}/s", config.server_address))
         .json(&request)
         .send()
