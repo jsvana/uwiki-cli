@@ -175,7 +175,7 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
     };
 
     let mut file = NamedTempFile::new()?;
-    let source = "---\ntitle: {{#if title}}{{title}}{{/if}}\n---\n{{#if body}}{{body}}{{/if}}";
+    let source = "---\ntitle: {{#if title}}{{title}}{{/if}}\n\n---\n{{#if body}}{{body}}{{/if}}";
     let mut handlebars = Handlebars::new();
 
     handlebars.register_template_string("t1", source)?;
