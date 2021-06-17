@@ -126,7 +126,10 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
         .context("error parsing response JSON")?;
 
     if !response.success {
-        return Err(anyhow!("Error getting page from server"));
+        return Err(anyhow!(
+            "Error getting page from server: {}",
+            response.message
+        ));
     }
 
     let previous_version = match response.version {
