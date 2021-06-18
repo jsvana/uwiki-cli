@@ -11,7 +11,7 @@ handlebars = "4.0"
 log = "0.4"
 maplit = "1.0"
 pretty_env_logger = "0.4"
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", features = ["json", "cookies"] }
 serde = "1.0"
 serde_derive = "1.0"
 serde_yaml = "0.8.17"
@@ -19,5 +19,5 @@ structopt = "0.3"
 tempfile = "3.2"
 tokio = { version = "1", features = ["full"] }
 toml = "0.5"
-uwiki-types = "0.1"
+uwiki-types = "0.2"
 xdg = "2.0"

@@ -5,7 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use extract_frontmatter::Extractor;
 use handlebars::Handlebars;
 use log::{error, info};
-use maplit::{btreemap, hashmap};
+use maplit::btreemap;
 use serde_derive::Deserialize;
 use structopt::StructOpt;
 use tempfile::NamedTempFile;
@@ -27,14 +27,11 @@ struct Config {
 
     username: Option<String>,
     password: Option<String>,
-
-    token: Option<String>,
 }
 
 #[derive(Debug, StructOpt)]
 enum Subcommand {
     AddUser { username: String, password: String },
-    Auth,
     SetPage { slug: String },
 }
 
@@ -50,14 +47,9 @@ struct Args {
 }
 
 async fn cmd_add_user(username: String, password: String, config: Config) -> Result<()> {
-    let map = hashmap! {
-        "username" => username,
-        "password" => password,
-    };
-
     let response: uwiki_types::AddUserResponse = reqwest::Client::new()
         .post(format!("{}/u", config.server_address))
-        .json(&map)
+        .json(&uwiki_types::AddUserRequest { username, password })
         .send()
         .await
         .context("error sending request")?
@@ -74,50 +66,25 @@ async fn cmd_add_user(username: String, password: String, config: Config) -> Res
     Ok(())
 }
 
-async fn cmd_auth(config: Config) -> Result<()> {
-    let map = hashmap! {
-        "username" => config
-            .username
-            .ok_or_else(|| anyhow!("config is missing username"))?,
-        "password" => config
-            .password
-            .ok_or_else(|| anyhow!("config is missing password"))?,
-    };
+async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
+    let client = reqwest::Client::builder().cookie_store(true).build()?;
 
-    let response: uwiki_types::AuthenticateResponse = reqwest::Client::new()
+    client
         .post(format!("{}/a", config.server_address))
-        .json(&map)
+        .form(&uwiki_types::AuthenticateRequest {
+            username: config
+                .username
+                .ok_or_else(|| anyhow!("config is missing username"))?,
+            password: config
+                .password
+                .ok_or_else(|| anyhow!("config is missing password"))?,
+        })
         .send()
         .await
-        .context("error sending request")?
-        .json()
-        .await
-        .context("error parsing response JSON")?;
+        .context("error sending login request")?;
 
-    if response.success {
-        match response.token {
-            Some(token) => info!("Set 'token = \"{}\"' in your uwiki-cli config file", token),
-            None => error!("Auth was successful, but no token was returned. Please retry."),
-        }
-    } else {
-        error!("{}", response.message);
-    }
-
-    Ok(())
-}
-
-async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
-    let token = config
-        .token
-        .ok_or_else(|| anyhow!("No token set in config file"))?;
-    let map = hashmap! {
-        "token" => token.clone(),
-        "slug" => slug.clone(),
-    };
-
-    let response: uwiki_types::GetPageResponse = reqwest::Client::new()
-        .post(format!("{}/g", config.server_address))
-        .json(&map)
+    let response: uwiki_types::GetPageResponse = client
+        .post(format!("{}/g/{}", config.server_address, slug))
         .send()
         .await
         .context("error sending request")?
@@ -184,28 +151,19 @@ async fn cmd_set_page(slug: String, config: Config) -> Result<()> {
     let metadata: PageMetadata = serde_yaml::from_str(&front_matter)?;
 
     let request = uwiki_types::SetPageRequest {
-        token,
-        slug,
         title: metadata.title,
         body: body.to_string(),
         previous_version,
     };
 
-    let response: uwiki_types::SetPageResponse = reqwest::Client::new()
-        .post(format!("{}/s", config.server_address))
-        .json(&request)
+    client
+        .post(format!("{}/s/{}", config.server_address, slug))
+        .form(&request)
         .send()
         .await
         .context("error sending request")?
-        .json()
-        .await
-        .context("error parsing response JSON")?;
-
-    if response.success {
-        info!("{}", response.message);
-    } else {
-        error!("{}", response.message);
-    }
+        .text()
+        .await?;
 
     Ok(())
 }
@@ -238,7 +196,6 @@ async fn main() -> Result<()> {
         Subcommand::AddUser { username, password } => {
             cmd_add_user(username, password, config).await
         }
-        Subcommand::Auth => cmd_auth(config).await,
         Subcommand::SetPage { slug } => cmd_set_page(slug, config).await,
     }
 }
